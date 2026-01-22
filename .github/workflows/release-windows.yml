@@ -169,7 +169,7 @@ jobs:
           --default-library=static \
           -Dcpp_link_args='-static' \
           -Dnv_of_sdk="$sdkPath" \
-          -Dcuda_path="$cudaPath"
+          -Dcuda_toolkit_path="$cudaPath"
 
         meson compile -vC build
 

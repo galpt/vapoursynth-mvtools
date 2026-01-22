@@ -199,7 +199,7 @@ if nv_of_sdk_root != ''
   cflags += ['-I' + join_paths(nv_of_sdk_root, 'include')]
   
   # Detect CUDA Toolkit path
-  cuda_path = get_option('cuda_path')
+  cuda_path = get_option('cuda_toolkit_path')
   
   if cuda_path == ''
     # Fallback: try common installation paths
@@ -229,7 +229,7 @@ if nv_of_sdk_root != ''
     cflags += ['-I' + cuda_include]
     message('CUDA include path: ' + cuda_include)
   else
-    warning('CUDA include path not found at: ' + cuda_include + '. Set CUDA_PATH environment variable or use -Dcuda_path option.')
+    warning('CUDA include path not found at: ' + cuda_include + '. Set CUDA_PATH environment variable or use -Dcuda_toolkit_path option.')
   endif
   
   # Add CUDA lib path for linking
