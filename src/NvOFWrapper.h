@@ -3,7 +3,7 @@
 // CUDA headers are only required when the NvOF SDK is enabled. Provide
 // a lightweight fallback so this header can be included even when the
 // SDK / CUDA headers are not installed on the build machine.
-#ifdef NV_OF_SDK
+#if defined(NV_OF_SDK) || defined(NV_OF_SDK_DYNAMIC)
 #include <cuda_runtime.h>
 #endif
 
@@ -25,7 +25,7 @@ private:
     void *ofHandle = nullptr;
     int width = 0;
     int height = 0;
-#ifdef NV_OF_SDK
+#if defined(NV_OF_SDK) || defined(NV_OF_SDK_DYNAMIC)
     cudaStream_t stream = 0;
 #else
     /* stream is unused when CUDA/NvOF is not available; keep a generic

@@ -217,7 +217,11 @@ if nv_of_sdk_root != ''
     endforeach
 
     if sdk_lib_dir == ''
-      warning('NvOF headers found in: ' + sdk_include_dir + ' but nvopticalflow library not found under SDK root. NvOF support will be disabled to avoid link errors.')
+      # Headers are present but no import lib / DLL found. Enable dynamic-load mode
+      # so the project can build without linking to nvopticalflow at compile time.
+      cflags += ['-DNV_OF_SDK_DYNAMIC']
+      cflags += ['-I' + sdk_include_dir]
+      message('NvOF headers found at ' + sdk_include_dir + ' but no nvopticalflow import lib found; enabling NV_OF_SDK_DYNAMIC (runtime load)')
     else
       cflags += ['-DNV_OF_SDK']
       cflags += ['-I' + sdk_include_dir]

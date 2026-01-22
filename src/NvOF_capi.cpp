@@ -2,7 +2,7 @@
 #include "NvOFWrapper.h"
 #include <cstdlib>
 #include <cstring>
-#ifdef NV_OF_SDK
+#if defined(NV_OF_SDK) || defined(NV_OF_SDK_DYNAMIC)
 #include <cuda_runtime.h>
 #endif
 
@@ -50,7 +50,7 @@ int nvof_compute(void *handle, const unsigned char *frame0, int pitch0, const un
         return -1;
     NvOFContext *ctx = (NvOFContext *)handle;
 
-#ifdef NV_OF_SDK
+#if defined(NV_OF_SDK) || defined(NV_OF_SDK_DYNAMIC)
     int w = ctx->width;
     int h = ctx->height;
     size_t flow_bytes = (size_t)w * (size_t)h * 4; // 2 x int16 per pixel

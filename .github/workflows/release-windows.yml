@@ -76,7 +76,7 @@ jobs:
         msystem: MINGW64
         update: true
         install: >-
-          base-devel mingw-w64-x86_64-jq mingw-w64-x86_64-gcc mingw-w64-x86_64-pkg-config mingw-w64-x86_64-vapoursynth mingw-w64-x86_64-meson mingw-w64-x86_64-ninja mingw-w64-x86_64-nasm mingw-w64-x86_64-fftw
+          base-devel mingw-w64-x86_64-jq mingw-w64-x86_64-gcc mingw-w64-x86_64-pkg-config mingw-w64-x86_64-vapoursynth mingw-w64-x86_64-meson mingw-w64-x86_64-ninja mingw-w64-x86_64-nasm mingw-w64-x86_64-fftw mingw-w64-x86_64-binutils
 
     - name: Verify runner CUDA availability
       id: cuda-check
@@ -110,21 +110,31 @@ jobs:
         if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
         Expand-Archive -Path $outZip -DestinationPath $outDir -Force
         Write-Host "NvOF SDK assembled and extracted to $outDir"
-        echo "NV_OF_SDK=$outDir" >> $env:GITHUB_ENV
 
-        # Validate SDK contents: headers + library
-        $sdkInclude1 = Join-Path $outDir 'include\nvOpticalFlowCuda.h'
-        $sdkInclude2 = Join-Path $outDir 'NvOFInterface\nvOpticalFlowCuda.h'
-        $sdkLib1 = Join-Path $outDir 'lib\nvopticalflow.lib'
-        $sdkLib2 = Join-Path $outDir 'lib64\nvopticalflow.lib'
-        $sdkDll = Get-ChildItem -Path $outDir -Recurse -Include '*nvopticalflow*.dll' -File -ErrorAction SilentlyContinue
-        if (-not (Test-Path $sdkInclude1) -and -not (Test-Path $sdkInclude2)) {
-          Write-Host "[ERROR] NvOF headers not found in assembled SDK. Looked for: $sdkInclude1 or $sdkInclude2"; exit 1
+        # The zip may extract into a top-level folder (e.g. Optical_Flow_SDK_5.0.7/).
+        # Search recursively for the NvOFInterface folder and use its parent as the SDK root.
+        $nvofInterface = Get-ChildItem -Path $outDir -Recurse -Directory -Filter NvOFInterface -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($nvofInterface) {
+          $sdkRoot = $nvofInterface.Parent.FullName
+        } else {
+          # Fallback: if NvOFInterface not found, try to find any nvOpticalFlowCuda.h anywhere and use its parent dir
+          $nvh = Get-ChildItem -Path $outDir -Recurse -Include 'nvOpticalFlowCuda.h' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($nvh) { $sdkRoot = $nvh.Directory.Parent.FullName } else { $sdkRoot = $outDir }
         }
-        if (-not (Test-Path $sdkLib1) -and -not (Test-Path $sdkLib2) -and ($sdkDll.Count -eq 0)) {
-          Write-Host "[ERROR] nvopticalflow import library or DLL not found in assembled SDK. Searched: $sdkLib1, $sdkLib2 and for any nvopticalflow DLLs under $outDir";
-          Write-Host "Please provide the full NvOpticalFlow SDK with lib/import library (nvopticalflow.lib or libnvopticalflow.a) or a matching nvopticalflow DLL.";
-          exit 1
+
+        Write-Host "Detected NvOF SDK root: $sdkRoot"
+        echo "NV_OF_SDK=$sdkRoot" >> $env:GITHUB_ENV
+
+        # Validate SDK contents: headers + library (search under detected root)
+        $sdkInclude = Get-ChildItem -Path $sdkRoot -Recurse -Include 'nvOpticalFlowCuda.h' -File -ErrorAction SilentlyContinue
+        $sdkLib = Get-ChildItem -Path $sdkRoot -Recurse -Include 'nvopticalflow.lib','libnvopticalflow.a' -File -ErrorAction SilentlyContinue
+        $sdkDll = Get-ChildItem -Path $sdkRoot -Recurse -Include '*nvopticalflow*.dll' -File -ErrorAction SilentlyContinue
+        if (-not $sdkInclude) {
+          Write-Host "[ERROR] NvOF headers not found in assembled SDK. Searched under: $sdkRoot"; exit 1
+        }
+        if (-not $sdkLib -and -not $sdkDll) {
+          Write-Host "[WARN] nvopticalflow import library or DLL not found in assembled SDK. Searched under: $sdkRoot";
+          Write-Host "Continuing: import lib generation step will run and may create an import lib from a DLL if present."
         }
 
     - name: Configure & build
@@ -152,6 +162,36 @@ jobs:
         fi
 
         echo "Using NvOF SDK at: $sdkPath"
+
+    - name: Generate import lib from NvOF DLL (if needed)
+      shell: msys2 {0}
+      run: |
+        sdkPath="${NV_OF_SDK:-${TEMP}/nv_of_sdk}"
+        if [[ -d "$sdkPath" ]]; then
+          dllpath=$(find "$sdkPath" -type f -iname 'nvopticalflow*.dll' | head -n 1 || true)
+          libpath="$sdkPath/lib"
+          if [[ -n "$dllpath" ]]; then
+            echo "Found NvOF DLL: $dllpath"
+            if [[ ! -f "$libpath/libnvopticalflow.a" && ! -f "$libpath/nvopticalflow.lib" ]]; then
+              echo "No import lib found; attempting to generate libnvopticalflow.a from DLL"
+              mkdir -p "$libpath"
+              pushd "$libpath"
+              cp "$dllpath" ./ || true
+              dllname=$(basename "$dllpath")
+              printf '%s\n' 'LIBRARY NVOPTICALFLOW' 'EXPORTS' 'nvOpticalFlowCreate' 'nvOpticalFlowDestroy' 'nvOpticalFlowExecute' > nvopticalflow.def
+              if command -v dlltool >/dev/null 2>&1; then
+                dlltool -d nvopticalflow.def -l libnvopticalflow.a -D "$dllname" || echo "dlltool failed to create import lib"
+              else
+                echo "dlltool not found; cannot generate import lib. Install binutils in MSYS2."
+              fi
+              popd
+            else
+              echo "Import lib already present under $libpath"
+            fi
+          else
+            echo "No nvopticalflow DLL found under SDK; skipping import-lib generation"
+          fi
+        fi
 
         # Auto-detect CUDA Toolkit installation
         cuda_candidates=(
