@@ -2,7 +2,8 @@
 #define MVFLOWFPSHELPER_H
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #include <VapourSynth4.h>
@@ -10,37 +11,39 @@ extern "C" {
 #include "MVAnalysisData.h"
 #include "SimpleResize.h"
 
-typedef struct MVFlowFPSHelperData {
-    VSNode *vectors;
-    const VSVideoInfo *vi;
+    typedef struct MVFlowFPSHelperData
+    {
+        VSNode *vectors;
+        const VSVideoInfo *vi;
 
-    const VSVideoInfo *supervi;
+        const VSVideoInfo *supervi;
 
-    int64_t thscd1;
-    int thscd2;
+        int64_t thscd1;
+        int thscd2;
 
-    MVAnalysisData vectors_data;
+        MVAnalysisData vectors_data;
 
-    int nHeightP;
-    int nHeightPUV;
-    int VPitchY;
-    int VPitchUV;
-    int nBlkXP;
-    int nBlkYP;
+        int nHeightP;
+        int nHeightPUV;
+        int VPitchY;
+        int VPitchUV;
+        int nBlkXP;
+        int nBlkYP;
 
-    SimpleResize upsizer;
-    SimpleResize upsizerUV;
-} MVFlowFPSHelperData;
+        VSNode *super_node; // super clip node (used if computing flow via NvOF)
+        int use_nvof;       // non-zero to compute flow with NVIDIA Optical Flow via C API
+        void *nvof_handle;  // opaque handle from C API (created when use_nvof enabled)
+        SimpleResize upsizer;
+        SimpleResize upsizerUV;
+    } MVFlowFPSHelperData;
 
+    static const char prop_VXFullY[] = "VXFullY";
+    static const char prop_VYFullY[] = "VYFullY";
+    static const char prop_VXFullUV[] = "VXFullUV";
+    static const char prop_VYFullUV[] = "VYFullUV";
 
-static const char prop_VXFullY[] = "VXFullY";
-static const char prop_VYFullY[] = "VYFullY";
-static const char prop_VXFullUV[] = "VXFullUV";
-static const char prop_VYFullUV[] = "VYFullUV";
-
-
-const VSFrame *VS_CC mvflowfpshelperGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi);
-void VS_CC mvflowfpshelperFree(void *instanceData, VSCore *core, const VSAPI *vsapi);
+    const VSFrame *VS_CC mvflowfpshelperGetFrame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi);
+    void VS_CC mvflowfpshelperFree(void *instanceData, VSCore *core, const VSAPI *vsapi);
 
 #ifdef __cplusplus
 } // extern "C"

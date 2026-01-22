@@ -1,3 +1,16 @@
+What I added
+===========
+
+- Optional NVIDIA Optical Flow (NvOF) support (runtime guarded).
+- Meson option: `nv_of_sdk` to enable/include the NvOF SDK at build time.
+- New wrapper and C API: `src/NvOFWrapper.{h,cpp}` and `src/NvOF_capi.{h,cpp}`.
+- `mv.FlowFPS` / helper updated with an optional `use_nvof` parameter to compute flow via NvOF.
+- CI: added `vapoursynth-mvtools/.github/workflows/release-windows.yml` to build and publish a zip to GitHub Releases.
+
+> [!NOTE]
+> - Builds without the NvOF SDK still succeed; to enable hardware flow the SDK and CUDA must be available on the build/runtime machine or CI runner.
+> - The NvOF implementation is compiled only when `-DNV_OF_SDK` is set; local SDK headers/libraries may be required to match exact SDK symbols.
+
 Description
 ===========
 

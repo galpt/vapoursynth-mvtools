@@ -1,0 +1,77 @@
+name: Release-Windows
+
+on:
+  push:
+    branches:
+    - main
+    - master
+    tags:
+    - 'v*'
+  workflow_dispatch:
+
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release-x64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          base-devel mingw-w64-x86_64-jq mingw-w64-x86_64-gcc mingw-w64-x86_64-pkg-config mingw-w64-x86_64-vapoursynth mingw-w64-x86_64-meson mingw-w64-x86_64-ninja mingw-w64-x86_64-nasm mingw-w64-x86_64-fftw
+
+    - name: Build vs-mvtools (x64)
+      run: |
+        meson setup build --buildtype release --prefer-static --default-library=static -Dcpp_link_args='-static'
+        meson compile -vC build
+
+    - name: Export version
+      run: |
+        echo "ARTIFACT_VERSION=$(meson introspect --projectinfo build | jq -r '.version')" >> $GITHUB_ENV
+
+    - name: Prepare release artifact
+      shell: pwsh
+      run: |
+        $out = "mvtools-windows-x64-$env:ARTIFACT_VERSION"
+        New-Item -ItemType Directory -Path release -Force
+        Copy-Item build/libmvtools.dll -Destination (Join-Path -Path release -ChildPath "$out.dll") -Force
+        Compress-Archive -Path release\* -DestinationPath "$out.zip" -Force
+        Write-Host "Created $out.zip"
+
+    - name: Generate release tag
+      id: tag
+      shell: pwsh
+      run: |
+        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $tag = "release-$timestamp"
+        echo "tag=$tag" >> $env:GITHUB_OUTPUT
+        echo "timestamp=$timestamp" >> $env:GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: mvtools ${{ steps.tag.outputs.timestamp }}
+        body: |
+          Automated build of vapoursynth-mvtools
+
+          Commit: ${{ github.sha }}
+        files: |
+          mvtools-windows-x64-${{ env.ARTIFACT_VERSION }}.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

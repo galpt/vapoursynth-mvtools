@@ -3,6 +3,9 @@ project('MVTools', 'c', 'cpp',
         default_options: ['c_std=c99', 'cpp_std=c++11', 'buildtype=release', 'b_lto=true'],
         meson_version: '>=0.46')
 
+# Optional NVIDIA Optical Flow SDK root. Set to SDK root to enable NvOF support.
+option('nv_of_sdk', type: 'string', value: '')
+
 
 warnings = [
   '-Wall',
@@ -63,6 +66,9 @@ sources = [
   'src/PlaneOfBlocks.cpp',
   'src/SADFunctions.cpp',
   'src/SimpleResize.cpp',
+  # Optional NvOF wrapper (provides hardware optical flow when enabled)
+  'src/NvOFWrapper.cpp',
+  'src/NvOF_capi.cpp',
 ]
 
 
@@ -186,6 +192,19 @@ deps = [
   dependency('fftw3f'),
   cxx.find_library('m', required: false),
 ]
+
+# If user provided an NvOF SDK path, add include and link flags and define NV_OF_SDK
+nv_of_sdk_root = get_option('nv_of_sdk')
+if nv_of_sdk_root != ''
+  cflags += ['-DNV_OF_SDK']
+  cflags += ['-I' + join_paths(nv_of_sdk_root, 'include')]
+  # Add library search path and link flag (typical name `nvopticalflow`)
+  if host_system == 'windows' or host_system == 'cygwin'
+    ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-lnvopticalflow', '-lcudart']
+  else
+    ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-lnvopticalflow', '-lcudart']
+  meson.log('NvOF SDK enabled; includes from: ' + join_paths(nv_of_sdk_root, 'include'))
+endif
 
 shared_module('mvtools',
               sources,
