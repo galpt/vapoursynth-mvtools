@@ -25,19 +25,50 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Verify NVIDIA GPU and CUDA availability
+    - name: Verify NVIDIA GPU and CUDA Toolkit
       shell: pwsh
       run: |
+        Write-Host "=== Checking NVIDIA GPU and CUDA Toolkit ==="
+
+        # Check nvidia-smi (driver)
         $nvsmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
         if ($nvsmi) {
-          Write-Host "nvidia-smi present: $($nvsmi.Path)"
-          exit 0
+          Write-Host "[OK] nvidia-smi found: $($nvsmi.Path)"
+          nvidia-smi --query-gpu=name,driver_version,cuda_version --format=csv
+        } else {
+          Write-Host "[WARN] nvidia-smi not found in PATH. NVIDIA drivers may not be installed."
         }
-        Write-Host "No NVIDIA GPU or CUDA drivers detected on this runner.";
-        Write-Host "This workflow requires a self-hosted Windows runner with an NVIDIA GPU and CUDA toolkit installed.";
-        Write-Host "Recommended labels for the runner: 'self-hosted', 'windows', 'cuda'.";
-        Write-Host "See README.md for setup instructions.";
-        exit 1
+
+        # Check CUDA Toolkit (nvcc compiler)
+        $nvcc = Get-Command nvcc -ErrorAction SilentlyContinue
+        if ($nvcc) {
+          Write-Host "[OK] CUDA Toolkit found: $($nvcc.Path)"
+          nvcc --version
+        } else {
+          Write-Host "[WARN] nvcc not found. CUDA Toolkit may not be installed or not in PATH."
+        }
+
+        # Check for cuda_runtime.h header
+        $cudaPaths = @(
+          "$env:CUDA_PATH\include\cuda_runtime.h",
+          "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.0\include\cuda_runtime.h",
+          "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\include\cuda_runtime.h"
+        )
+        $cudaHeaderFound = $false
+        foreach ($p in $cudaPaths) {
+          if (Test-Path $p) {
+            Write-Host "[OK] CUDA headers found: $p"
+            $cudaHeaderFound = $true
+            break
+          }
+        }
+        if (-not $cudaHeaderFound) {
+          Write-Host "[ERROR] cuda_runtime.h not found. Please install CUDA Toolkit from https://developer.nvidia.com/cuda-downloads"
+          Write-Host "Your RTX 3050 supports CUDA, but the toolkit must be installed separately from drivers."
+          exit 1
+        }
+
+        Write-Host "=== GPU/CUDA Check Complete ==="
 
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
