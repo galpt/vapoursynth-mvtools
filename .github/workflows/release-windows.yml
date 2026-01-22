@@ -40,72 +40,32 @@ jobs:
         if ($nvcc) { Write-Host "nvcc present: $($nvcc.Path)"; exit 0 }
         Write-Host "nvcc not found on runner; attempting to continue — CUDA toolkit must be present for NvOF builds."; exit 0
 
-    - name: Download NvOF SDK
-      env:
-        NV_OF_SDK_URL: ${{ secrets.NV_OF_SDK_URL }}
+    - name: Assemble NvOF SDK from repository parts
+      shell: pwsh
       run: |
+        $workspace = $env:GITHUB_WORKSPACE
+        $parts = Get-ChildItem -Path (Join-Path $workspace 'Optical_Flow_SDK_*.zip.*') -File | Sort-Object Name
+        if ($parts.Count -eq 0) {
+          Write-Host "No split SDK parts found in repository. Ensure Optical_Flow_SDK_*.zip.001/002/003 are present."; exit 1
+        }
         $outZip = Join-Path $env:TEMP 'nv_of_sdk.zip'
+        if (Test-Path $outZip) { Remove-Item $outZip -Force }
+        $outStream = [System.IO.File]::OpenWrite($outZip)
+        foreach ($p in $parts) {
+          Write-Host "Appending $($p.FullName)"
+          $in = [System.IO.File]::OpenRead($p.FullName)
+          $in.CopyTo($outStream)
+          $in.Close()
+        }
+        $outStream.Close()
+        # Validate ZIP magic bytes
+        $bytes = [System.IO.File]::ReadAllBytes($outZip)[0..3]
+        if ($bytes[0] -ne 0x50 -or $bytes[1] -ne 0x4B) { Write-Error "Assembled file is not a ZIP archive"; exit 1 }
         $outDir = Join-Path $env:TEMP 'nv_of_sdk'
-        $tmpHtml = Join-Path $env:TEMP 'nv_of_sdk_page.html'
-        $url = $env:NV_OF_SDK_URL
-        Write-Host "Attempting to download NvOF SDK from: $url"
-
-        function Download-File($uri, $dest) {
-          for ($i = 1; $i -le 3; $i++) {
-            try {
-              Invoke-WebRequest -Uri $uri -OutFile $dest -UseBasicParsing -MaximumRedirection 10 -ErrorAction Stop
-              return $true
-            } catch {
-              Write-Warning "Attempt $i failed: $($_.Exception.Message)"
-              Start-Sleep -Seconds (2 * $i)
-            }
-          }
-          return $false
-        }
-
-        # Try direct download into a zip file first
-        if (Download-File $url $outZip) {
-          Write-Host "Downloaded candidate file to $outZip"
-        } else {
-          Write-Host "Direct download did not produce a ZIP; fetching page and searching for .zip links"
-          if (-not (Download-File $url $tmpHtml)) { Write-Error "Failed to download landing page for inspection"; exit 1 }
-          $html = Get-Content $tmpHtml -Raw
-          
-          # Look for download links (Limewire uses data attributes or direct links)
-          $pattern = 'href="([^"]+\.zip)"'
-          if ($html -match $pattern) {
-            $link = $Matches[1]
-            Write-Host "Found .zip link: $link"
-          } else {
-            # Try finding data-download or similar attributes
-            $pattern = 'data-[^=]+-url="([^"]+)"'
-            if ($html -match $pattern) {
-              $link = $Matches[1]
-              Write-Host "Found data-url link: $link"
-            } else {
-              Write-Error "No download link found on landing page"; exit 1
-            }
-          }
-          
-          if ($link -notmatch '^https?://') {
-            $base = ([System.Uri]$url).GetLeftPart([System.UriPartial]::Authority)
-            if ($link.StartsWith('/')) { $link = $base + $link }
-            else { $link = $url.TrimEnd('/') + '/' + $link.TrimStart('/') }
-          }
-          Write-Host "Downloading from: $link"
-          if (-not (Download-File $link $outZip)) { Write-Error "Failed to download .zip from landing page"; exit 1 }
-        }
-
-        # Quick magic-bytes check for ZIP (PK..)
-        try {
-          $bytes = Get-Content $outZip -Encoding Byte -TotalCount 4 -ErrorAction Stop
-        } catch {
-          Write-Error "Downloaded file not found or unreadable: $outZip"; exit 1
-        }
-        if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x50 -or $bytes[1] -ne 0x4B) { Write-Error "Downloaded file does not appear to be a ZIP archive"; exit 1 }
-
+        if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
         Expand-Archive -Path $outZip -DestinationPath $outDir -Force
-        Write-Host "NvOF SDK extracted to $outDir"
+        Write-Host "NvOF SDK assembled and extracted to $outDir"
+        echo "NV_OF_SDK=$outDir" >> $env:GITHUB_ENV
 
     - name: Configure & build
       shell: msys2 {0}
