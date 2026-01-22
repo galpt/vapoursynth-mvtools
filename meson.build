@@ -195,7 +195,7 @@ deps = [
 
 # If user provided an NvOF SDK path, add include and link flags and define NV_OF_SDK
 nv_of_sdk_root = get_option('nv_of_sdk')
-if nv_of_sdk_root != ''
+if nv_of_sdk_root != ""
   cflags += ['-DNV_OF_SDK']
   cflags += ['-I' + join_paths(nv_of_sdk_root, 'include')]
   # Add library search path and link flag (typical name `nvopticalflow`)
@@ -203,6 +203,8 @@ if nv_of_sdk_root != ''
     ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-lnvopticalflow', '-lcudart']
   else
     ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-lnvopticalflow', '-lcudart']
+  endif
+
   meson.log('NvOF SDK enabled; includes from: ' + join_paths(nv_of_sdk_root, 'include'))
 endif
 
