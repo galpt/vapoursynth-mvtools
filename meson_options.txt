@@ -2,3 +2,8 @@ option('with_nasm',
        type: 'string',
        value: 'nasm',
        description: 'Location of the NASM executable. Only relevant on x86 hosts.')
+
+option('nv_of_sdk',
+       type: 'string',
+       value: '',
+       description: 'Path to NVIDIA Optical Flow SDK root to enable NvOF support (includes and libs).')

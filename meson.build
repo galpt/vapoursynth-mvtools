@@ -1,10 +1,9 @@
 project('MVTools', 'c', 'cpp',
-        version: '24',
-        default_options: ['c_std=c99', 'cpp_std=c++11', 'buildtype=release', 'b_lto=true'],
-        meson_version: '>=0.46')
+  version: '24',
+  default_options: ['c_std=c99', 'cpp_std=c++11', 'buildtype=release', 'b_lto=true'],
+  meson_version: '>=0.46')
 
-# Optional NVIDIA Optical Flow SDK root. Set to SDK root to enable NvOF support.
-option('nv_of_sdk', type: 'string', value: '')
+# Note: `nv_of_sdk` is declared in meson_options.txt to avoid calling option() in meson.build
 
 
 warnings = [
