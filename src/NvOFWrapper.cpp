@@ -4,7 +4,17 @@
 
 #ifdef NV_OF_SDK
 #include <cuda.h>
+#if defined(__has_include)
+#if __has_include(<nvOpticalFlowCuda.h>)
 #include <nvOpticalFlowCuda.h>
+#elif __has_include(<nvOpticalFlow.h>)
+#include <nvOpticalFlow.h>
+#else
+#error "NvOF headers not found: nvOpticalFlowCuda.h or nvOpticalFlow.h"
+#endif
+#else
+#include <nvOpticalFlowCuda.h>
+#endif
 #include <cuda_runtime.h>
 #endif
 

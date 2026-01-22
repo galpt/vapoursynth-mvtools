@@ -58,6 +58,9 @@ int nvof_compute(void *handle, const unsigned char *frame0, int pitch0, const un
     unsigned char *d0 = nullptr, *d1 = nullptr;
     void *d_flow = nullptr;
     size_t dev_pitch0 = 0, dev_pitch1 = 0;
+    /* allocate these up-front to avoid jumping over initialization with goto */
+    unsigned char *host_flow = nullptr;
+    int16_t *flow_shorts = nullptr;
 
     if (cudaMallocPitch((void **)&d0, &dev_pitch0, (size_t)w, (size_t)h) != cudaSuccess)
         goto fail;
@@ -76,7 +79,7 @@ int nvof_compute(void *handle, const unsigned char *frame0, int pitch0, const un
     ctx->wrapper->Execute(d0, d1, d_flow);
 
     // Download flow buffer
-    unsigned char *host_flow = (unsigned char *)malloc(flow_bytes);
+    host_flow = (unsigned char *)malloc(flow_bytes);
     if (!host_flow)
         goto fail_free_all;
     if (cudaMemcpy(host_flow, d_flow, flow_bytes, cudaMemcpyDeviceToHost) != cudaSuccess)
@@ -86,7 +89,7 @@ int nvof_compute(void *handle, const unsigned char *frame0, int pitch0, const un
     }
 
     // Interpret flow as int16 vx, int16 vy per pixel
-    int16_t *flow_shorts = (int16_t *)host_flow;
+    flow_shorts = (int16_t *)host_flow;
     for (int i = 0; i < w * h; ++i)
     {
         vx_out[i] = flow_shorts[i * 2 + 0];
