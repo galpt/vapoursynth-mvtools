@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: [ self-hosted, windows, cuda ]
+    runs-on: [ self-hosted ]
     defaults:
       run:
         shell: pwsh
