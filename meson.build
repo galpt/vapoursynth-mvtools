@@ -204,7 +204,7 @@ if nv_of_sdk_root != ''
     ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-lnvopticalflow', '-lcudart']
   endif
 
-  meson.log('NvOF SDK enabled; includes from: ' + join_paths(nv_of_sdk_root, 'include'))
+  message('NvOF SDK enabled; includes from: ' + join_paths(nv_of_sdk_root, 'include'))
 endif
 
 shared_module('mvtools',
