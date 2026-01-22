@@ -12,6 +12,30 @@
 > - Builds without the NvOF SDK still succeed; to enable hardware flow the SDK and CUDA must be available on the build/runtime machine or CI runner.
 > - The NvOF implementation is compiled only when `-DNV_OF_SDK` is set; local SDK headers/libraries may be required to match exact SDK symbols.
 
+## CI: NvOF-enabled builds (recommended: self-hosted)
+
+- Producing an NvOF-enabled Windows DLL on GitHub Actions requires both the CUDA toolkit and the NVIDIA Optical Flow SDK on the runner.
+- Two supported workflows:
+  - Self-hosted runner (recommended): install CUDA + NvOF SDK on a Windows machine you control and run the `release-windows.yml` job with `-Dnv_of_sdk` set to the SDK root.
+  - Hosted runner (automated): the workflow can download a user-provided NvOF SDK zip **only if** you add a repository secret `NV_OF_SDK_URL` that points to a direct-download URL you are authorized to use. The workflow will still require the CUDA toolkit (preinstalled `nvcc`), otherwise the job will fail with instructions.
+
+  Official NVIDIA Optical Flow SDK downloads: https://developer.nvidia.com/opticalflow/download
+
+Important notes:
+- NVIDIA SDKs are subject to NVIDIA's EULA — you must have the right to download and use the SDK on CI. Do not upload/re-distribute the SDK in this repository.
+- Installing CUDA on ephemeral hosted runners is brittle and may require admin/reboot; a self-hosted runner is the most reliable way to produce NvOF-enabled Releases.
+
+Quick commands (local / self-hosted):
+
+```sh
+meson setup build -Dnv_of_sdk="C:/path/to/NvOF_SDK" --buildtype release
+meson compile -C build
+```
+
+To run the hosted, automated NvOF job in Actions:
+1. Add secret `NV_OF_SDK_URL` (direct-download URL to the SDK zip you are authorized to use).
+2. Run the `release-windows.yml` workflow manually and set `enable_nvof=true`.
+
 ## Description
 
 MVTools is a set of filters for motion estimation and compensation.

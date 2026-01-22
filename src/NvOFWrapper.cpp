@@ -1,29 +1,36 @@
 #include "NvOFWrapper.h"
-#include <cuda.h>
 #include <iostream>
+#include <cstring>
 
 #ifdef NV_OF_SDK
+#include <cuda.h>
 #include <nvOpticalFlowCuda.h>
+#include <cuda_runtime.h>
 #endif
 
 NvOFWrapper::NvOFWrapper(int w, int h) : width(w), height(h) {}
 
 NvOFWrapper::~NvOFWrapper()
 {
+#ifdef NV_OF_SDK
     if (stream)
         cudaStreamDestroy(stream);
 
-#ifdef NV_OF_SDK
     if (nvof_available && ofHandle)
     {
         nvOpticalFlowDestroy(ofHandle);
         ofHandle = nullptr;
     }
+#else
+    /* nothing to destroy when CUDA/NvOF not present */
+    (void)stream;
+    (void)ofHandle;
 #endif
 }
 
 bool NvOFWrapper::Init()
 {
+#ifdef NV_OF_SDK
     cudaError_t err = cudaStreamCreate(&stream);
     if (err != cudaSuccess)
         return false;
@@ -40,7 +47,6 @@ bool NvOFWrapper::Init()
     cudaGetDeviceProperties(&prop, dev);
     std::cerr << "NvOFWrapper: device: " << prop.name << "\n";
 
-#ifdef NV_OF_SDK
     NV_OF_CUDA_API_CREATE_PARAMS createParams = {};
     createParams.width = width;
     createParams.height = height;
@@ -56,24 +62,29 @@ bool NvOFWrapper::Init()
     }
 
     nvof_available = true;
-#else
-    nvof_available = false;
-#endif
-
     return true;
+#else
+    /* No CUDA available on this build — provide a safe fallback so the
+       wrapper can be constructed and Init() succeeds. The runtime path
+       will return zero flow. */
+    stream = nullptr;
+    nvof_available = false;
+    return true;
+#endif
 }
 
 void NvOFWrapper::Execute(const void *input0, const void *input1, void *flowOutput)
 {
+    size_t flow_bytes = (size_t)width * (size_t)height * 4;
+
+#ifdef NV_OF_SDK
     if (!nvof_available)
     {
-        size_t flow_bytes = (size_t)width * (size_t)height * 4;
         cudaMemsetAsync(flowOutput, 0, flow_bytes, stream);
         cudaStreamSynchronize(stream);
         return;
     }
 
-#ifdef NV_OF_SDK
     NV_OF_EXECUTE_INPUT_PARAMS inParams = {};
     inParams.inputFrame = (CUdeviceptr)input0;
     inParams.referenceFrame = (CUdeviceptr)input1;
@@ -84,13 +95,15 @@ void NvOFWrapper::Execute(const void *input0, const void *input1, void *flowOutp
     NvOFStatus status = nvOpticalFlowExecute(ofHandle, &inParams, &outParams);
     if (status != NV_OF_SUCCESS)
     {
-        size_t flow_bytes = (size_t)width * (size_t)height * 4;
         cudaMemsetAsync(flowOutput, 0, flow_bytes, stream);
     }
     cudaStreamSynchronize(stream);
 #else
-    size_t flow_bytes = (size_t)width * (size_t)height * 4;
-    cudaMemsetAsync(flowOutput, 0, flow_bytes, stream);
-    cudaStreamSynchronize(stream);
+    /* Fallback when CUDA/NvOF not available: zero the flow buffer on the
+       host. This keeps behavior consistent (zero flow) without requiring
+       CUDA headers/libraries at build time. */
+    std::memset(flowOutput, 0, flow_bytes);
+    (void)input0;
+    (void)input1;
 #endif
 }

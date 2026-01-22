@@ -8,7 +8,11 @@ on:
     tags:
     - 'v*'
   workflow_dispatch:
-
+    inputs:
+      enable_nvof:
+        description: 'Run NvOF-enabled build (requires NV_OF_SDK_URL secret or self-hosted runner)'
+        required: false
+        default: 'true'
 
 permissions:
   contents: write
@@ -71,6 +75,154 @@ jobs:
           Commit: ${{ github.sha }}
         files: |
           mvtools-windows-x64-${{ env.ARTIFACT_VERSION }}.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: NvOF-enabled build. Runs only when explicitly requested or when
+  # the user supplies an `NV_OF_SDK_URL` secret that points to an SDK zip.
+  build-and-release-nvof:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    needs: build-and-release-x64
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Check if NvOF requested or SDK provided
+      shell: pwsh
+      run: |
+        $enabled = '${{ github.event.inputs.enable_nvof }}'
+        $sdkSecret = '${{ secrets.NV_OF_SDK_URL }}'
+        if ($enabled -ne 'true' -and [string]::IsNullOrEmpty($sdkSecret)) {
+          Write-Host "NvOF not requested and no NV_OF_SDK_URL secret provided. Skipping NvOF job.";
+          exit 0
+        }
+
+    - name: Verify runner CUDA availability
+      id: cuda-check
+      run: |
+        $nvcc = (Get-Command nvcc -ErrorAction SilentlyContinue)
+        if ($nvcc) { Write-Host "nvcc present: $($nvcc.Path)"; exit 0 }
+        Write-Host "nvcc not found on runner; attempting to continue — CUDA toolkit must be present for NvOF builds."; exit 0
+
+    - name: Download NvOF SDK (from secret URL)
+      if: ${{ secrets.NV_OF_SDK_URL != '' }}
+      env:
+        NV_OF_SDK_URL: ${{ secrets.NV_OF_SDK_URL }}
+      run: |
+        $outZip = Join-Path $env:TEMP 'nv_of_sdk.zip'
+        $outDir = Join-Path $env:TEMP 'nv_of_sdk'
+        $tmpHtml = Join-Path $env:TEMP 'nv_of_sdk_page.html'
+        $url = $env:NV_OF_SDK_URL
+        Write-Host "Attempting to download NvOF SDK from: $url"
+
+        function Download-File($uri, $dest) {
+          for ($i = 1; $i -le 3; $i++) {
+            try {
+              Invoke-WebRequest -Uri $uri -OutFile $dest -UseBasicParsing -MaximumRedirection 10 -ErrorAction Stop
+              return $true
+            } catch {
+              Write-Warning "Attempt $i failed: $($_.Exception.Message)"
+              Start-Sleep -Seconds (2 * $i)
+            }
+          }
+          return $false
+        }
+
+        # Try direct download into a zip file first
+        if (Download-File $url $outZip) {
+          Write-Host "Downloaded candidate file to $outZip"
+        } else {
+          Write-Host "Direct download did not produce a ZIP; fetching page and searching for .zip links"
+          if (-not (Download-File $url $tmpHtml)) { Write-Error "Failed to download landing page for inspection"; exit 1 }
+          $html = Get-Content $tmpHtml -Raw
+          $matches = [regex]::Matches($html, 'href\s*=\s*["\']([^"\']+\.(zip|ZIP))["\']', 'IgnoreCase')
+          if ($matches.Count -eq 0) {
+            # Fallback: look for obvious download endpoints mentioning OpticalFlow
+            $matches = [regex]::Matches($html, 'href\s*=\s*["\']([^"\']+?(OpticalFlow|opticalflow|NvOpticalFlow)[^"\']+)["\']', 'IgnoreCase')
+          }
+          if ($matches.Count -eq 0) { Write-Error "No candidate .zip link found on landing page"; exit 1 }
+          $link = $matches[0].Groups[1].Value
+          if ($link -notmatch '^https?://') {
+            $base = (New-Object System.Uri($url)).GetLeftPart('Scheme') + '://' + (New-Object System.Uri($url)).Host
+            if ($link.StartsWith('/')) { $link = $base + $link }
+            else { $link = $url.TrimEnd('/') + '/' + $link.TrimStart('/') }
+          }
+          Write-Host "Found candidate download link: $link"
+          if (-not (Download-File $link $outZip)) { Write-Error "Failed to download candidate .zip from landing page"; exit 1 }
+        }
+
+        # Quick magic-bytes check for ZIP (PK..)
+        try {
+          $bytes = Get-Content $outZip -Encoding Byte -TotalCount 4 -ErrorAction Stop
+        } catch {
+          Write-Error "Downloaded file not found or unreadable: $outZip"; exit 1
+        }
+        if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x50 -or $bytes[1] -ne 0x4B) { Write-Error "Downloaded file does not appear to be a ZIP archive"; exit 1 }
+
+        Expand-Archive -Path $outZip -DestinationPath $outDir -Force
+        Write-Host "NvOF SDK extracted to $outDir"
+
+    - name: Configure & build (NvOF)
+      run: |
+        # Candidate SDK locations (extracted tmp, env var, common install path)
+        $candidates = @(
+          (Join-Path $env:TEMP 'nv_of_sdk'),
+          $env:NV_OF_SDK,
+          'C:\Program Files\NVIDIA Corporation\OpticalFlow-SDK',
+          'C:\Program Files\NVIDIA Corporation\NvOpticalFlow'
+        ) | Where-Object { $_ -and (Test-Path $_) }
+
+        if ($candidates.Count -eq 0) {
+          Write-Error "NvOF SDK not found on runner. Provide secret NV_OF_SDK_URL, set NV_OF_SDK on the runner, or use a self-hosted runner with the SDK installed."; exit 1
+        }
+
+        $sdkPath = $candidates[0]
+        Write-Host "Using NvOF SDK at: $sdkPath"
+
+        # Configure Meson with the SDK root and build
+        bash -lc "meson setup build --buildtype release --prefer-static --default-library=static -Dcpp_link_args='-static' -Dnv_of_sdk=\"$sdkPath\""
+        bash -lc "meson compile -vC build"
+
+    - name: Export version (NvOF)
+      run: |
+        echo "ARTIFACT_VERSION=$(meson introspect --projectinfo build | jq -r '.version')" >> $GITHUB_ENV
+
+    - name: Prepare NvOF release artifact
+      shell: pwsh
+      run: |
+        $out = "mvtools-windows-x64-nvof-$env:ARTIFACT_VERSION"
+        New-Item -ItemType Directory -Path release -Force
+        Copy-Item build/libmvtools.dll -Destination (Join-Path -Path release -ChildPath "$out.dll") -Force
+        Compress-Archive -Path release\* -DestinationPath "$out.zip" -Force
+        Write-Host "Created $out.zip"
+
+    - name: Generate release tag (NvOF)
+      id: tag_nvof
+      shell: pwsh
+      run: |
+        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $tag = "release-nvof-$timestamp"
+        echo "tag=$tag" >> $env:GITHUB_OUTPUT
+        echo "timestamp=$timestamp" >> $env:GITHUB_OUTPUT
+
+    - name: Create NvOF Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.tag_nvof.outputs.tag }}
+        name: mvtools-nvof ${{ steps.tag_nvof.outputs.timestamp }}
+        body: |
+          NvOF-enabled build (requires CUDA + NvOF SDK)
+
+          Commit: ${{ github.sha }}
+        files: |
+          mvtools-windows-x64-nvof-${{ env.ARTIFACT_VERSION }}.zip
         draft: false
         prerelease: false
       env:
