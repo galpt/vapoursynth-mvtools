@@ -112,7 +112,6 @@ jobs:
         Write-Host "nvcc not found on runner; attempting to continue — CUDA toolkit must be present for NvOF builds."; exit 0
 
     - name: Download NvOF SDK (from secret URL)
-      if: ${{ secrets.NV_OF_SDK_URL != '' }}
       env:
         NV_OF_SDK_URL: ${{ secrets.NV_OF_SDK_URL }}
       run: |
