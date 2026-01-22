@@ -112,6 +112,21 @@ jobs:
         Write-Host "NvOF SDK assembled and extracted to $outDir"
         echo "NV_OF_SDK=$outDir" >> $env:GITHUB_ENV
 
+        # Validate SDK contents: headers + library
+        $sdkInclude1 = Join-Path $outDir 'include\nvOpticalFlowCuda.h'
+        $sdkInclude2 = Join-Path $outDir 'NvOFInterface\nvOpticalFlowCuda.h'
+        $sdkLib1 = Join-Path $outDir 'lib\nvopticalflow.lib'
+        $sdkLib2 = Join-Path $outDir 'lib64\nvopticalflow.lib'
+        $sdkDll = Get-ChildItem -Path $outDir -Recurse -Include '*nvopticalflow*.dll' -File -ErrorAction SilentlyContinue
+        if (-not (Test-Path $sdkInclude1) -and -not (Test-Path $sdkInclude2)) {
+          Write-Host "[ERROR] NvOF headers not found in assembled SDK. Looked for: $sdkInclude1 or $sdkInclude2"; exit 1
+        }
+        if (-not (Test-Path $sdkLib1) -and -not (Test-Path $sdkLib2) -and ($sdkDll.Count -eq 0)) {
+          Write-Host "[ERROR] nvopticalflow import library or DLL not found in assembled SDK. Searched: $sdkLib1, $sdkLib2 and for any nvopticalflow DLLs under $outDir";
+          Write-Host "Please provide the full NvOpticalFlow SDK with lib/import library (nvopticalflow.lib or libnvopticalflow.a) or a matching nvopticalflow DLL.";
+          exit 1
+        }
+
     - name: Configure & build
       shell: msys2 {0}
       run: |

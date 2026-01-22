@@ -195,8 +195,38 @@ deps = [
 # If user provided an NvOF SDK path, add include and link flags and define NV_OF_SDK
 nv_of_sdk_root = get_option('nv_of_sdk')
 if nv_of_sdk_root != ''
-  cflags += ['-DNV_OF_SDK']
-  cflags += ['-I' + join_paths(nv_of_sdk_root, 'include')]
+  # SDK may place headers under 'include' or 'NvOFInterface'
+  sdk_inc_candidates = [join_paths(nv_of_sdk_root, 'include'), join_paths(nv_of_sdk_root, 'NvOFInterface')]
+  sdk_include_dir = ''
+  foreach p : sdk_inc_candidates
+    if import('fs').exists(p) and (import('fs').exists(join_paths(p, 'nvOpticalFlowCuda.h')) or import('fs').exists(join_paths(p, 'nvOpticalFlow.h')))
+      sdk_include_dir = p
+      break
+    endif
+  endforeach
+
+  if sdk_include_dir != ''
+    # Try to locate nvopticalflow library as well (common locations)
+    lib_candidates = [join_paths(nv_of_sdk_root, 'lib'), join_paths(nv_of_sdk_root, 'lib64'), join_paths(nv_of_sdk_root, 'bin'), join_paths(nv_of_sdk_root, 'Lib')]
+    sdk_lib_dir = ''
+    foreach lp : lib_candidates
+      if import('fs').exists(lp) and (import('fs').exists(join_paths(lp, 'nvopticalflow.lib')) or import('fs').exists(join_paths(lp, 'libnvopticalflow.a')) or import('fs').exists(join_paths(lp, 'nvopticalflow.dll')))
+        sdk_lib_dir = lp
+        break
+      endif
+    endforeach
+
+    if sdk_lib_dir == ''
+      warning('NvOF headers found in: ' + sdk_include_dir + ' but nvopticalflow library not found under SDK root. NvOF support will be disabled to avoid link errors.')
+    else
+      cflags += ['-DNV_OF_SDK']
+      cflags += ['-I' + sdk_include_dir]
+      ldflags += ['-L' + sdk_lib_dir, '-lnvopticalflow']
+      message('NvOF SDK enabled; includes from: ' + sdk_include_dir + ' libs from: ' + sdk_lib_dir)
+    endif
+  else
+    warning('NvOF SDK include directory or expected headers not found under: ' + nv_of_sdk_root + '. NvOF support will be disabled.')
+  endif
   
   # Detect CUDA Toolkit path
   cuda_path = get_option('with_cuda')
