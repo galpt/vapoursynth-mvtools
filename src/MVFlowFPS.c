@@ -53,6 +53,7 @@ typedef struct MVFlowFPSData
     int64_t thscd1;
     int thscd2;
     int opt;
+    int use_nvof;
 
     MVAnalysisData mvbw_data;
     MVAnalysisData mvfw_data;
