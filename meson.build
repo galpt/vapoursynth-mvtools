@@ -197,11 +197,53 @@ nv_of_sdk_root = get_option('nv_of_sdk')
 if nv_of_sdk_root != ''
   cflags += ['-DNV_OF_SDK']
   cflags += ['-I' + join_paths(nv_of_sdk_root, 'include')]
+  
+  # Detect CUDA Toolkit path
+  cuda_path = get_option('cuda_path')
+  
+  if cuda_path == ''
+    # Fallback: try common installation paths
+    if host_system == 'windows' or host_system == 'cygwin'
+      # Try common Windows CUDA installation paths
+      cuda_versions = ['v13.1', 'v13.0', 'v12.6', 'v12.5', 'v12.4', 'v12.3', 'v12.2', 'v12.1', 'v12.0', 'v11.8', 'v11.7', 'v11.0']
+      foreach ver : cuda_versions
+        test_path = 'C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/' + ver
+        if import('fs').exists(test_path)
+          cuda_path = test_path
+          break
+        endif
+      endforeach
+    else
+      # Linux/Unix: try standard paths
+      if import('fs').exists('/usr/local/cuda')
+        cuda_path = '/usr/local/cuda'
+      elif import('fs').exists('/opt/cuda')
+        cuda_path = '/opt/cuda'
+      endif
+    endif
+  endif
+  
+  # Add CUDA include path if found
+  cuda_include = join_paths(cuda_path, 'include')
+  if import('fs').exists(cuda_include)
+    cflags += ['-I' + cuda_include]
+    message('CUDA include path: ' + cuda_include)
+  else
+    warning('CUDA include path not found at: ' + cuda_include + '. Set CUDA_PATH environment variable or use -Dcuda_path option.')
+  endif
+  
+  # Add CUDA lib path for linking
+  if host_system == 'windows' or host_system == 'cygwin'
+    cuda_lib = join_paths(cuda_path, 'lib', 'x64')
+  else
+    cuda_lib = join_paths(cuda_path, 'lib64')
+  endif
+  
   # Add library search path and link flag (typical name `nvopticalflow`)
   if host_system == 'windows' or host_system == 'cygwin'
-    ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-lnvopticalflow', '-lcudart']
+    ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-L' + cuda_lib, '-lnvopticalflow', '-lcudart']
   else
-    ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-lnvopticalflow', '-lcudart']
+    ldflags += ['-L' + join_paths(nv_of_sdk_root, 'lib'), '-L' + cuda_lib, '-lnvopticalflow', '-lcudart']
   endif
 
   message('NvOF SDK enabled; includes from: ' + join_paths(nv_of_sdk_root, 'include'))

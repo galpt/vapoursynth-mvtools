@@ -138,8 +138,39 @@ jobs:
 
         echo "Using NvOF SDK at: $sdkPath"
 
-        # Configure Meson with the SDK root and build
-        meson setup build --buildtype release --prefer-static --default-library=static -Dcpp_link_args='-static' -Dnv_of_sdk="$sdkPath"
+        # Auto-detect CUDA Toolkit installation
+        cuda_candidates=(
+          "/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1"
+          "/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0"
+          "/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.6"
+          "/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.5"
+          "/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.0"
+          "/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8"
+        )
+
+        cudaPath=""
+        for cuda_candidate in "${cuda_candidates[@]}"; do
+          if [[ -d "$cuda_candidate" ]]; then
+            cudaPath="$cuda_candidate"
+            echo "Found CUDA Toolkit at: $cudaPath"
+            break
+          fi
+        done
+
+        if [[ -z "$cudaPath" ]]; then
+          echo "ERROR: CUDA Toolkit not found! Install CUDA from https://developer.nvidia.com/cuda-downloads"
+          exit 1
+        fi
+
+        # Configure Meson with both NvOF SDK and CUDA paths
+        meson setup build \
+          --buildtype release \
+          --prefer-static \
+          --default-library=static \
+          -Dcpp_link_args='-static' \
+          -Dnv_of_sdk="$sdkPath" \
+          -Dcuda_path="$cudaPath"
+
         meson compile -vC build
 
     - name: Export version
