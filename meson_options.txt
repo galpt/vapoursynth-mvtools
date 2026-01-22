@@ -8,7 +8,7 @@ option('nv_of_sdk',
        value: '',
        description: 'Path to NVIDIA Optical Flow SDK root to enable NvOF support (includes and libs).')
 
-option('cuda_toolkit_path',
+option('with_cuda',
        type: 'string',
        value: '',
        description: 'Path to CUDA Toolkit installation (e.g., C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1). Auto-detected if not specified.')
